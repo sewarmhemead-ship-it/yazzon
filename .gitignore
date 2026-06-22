@@ -1,0 +1,14 @@
+# OS / Editor
+.DS_Store
+Thumbs.db
+*.log
+
+# Node
+node_modules/
+
+# Temporäre Verifikations-Dateien (Headless-Screenshots / CDP-Skripte)
+_cdp_*.mjs
+_gal*.png
+_verify*.png
+_v_*.png
+_finale*.png

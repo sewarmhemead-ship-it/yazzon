@@ -1,0 +1,256 @@
+<!DOCTYPE html>
+<!--
+  ════════════════════════════════════════════════════════════════════
+  YAZZOON — Oriental Brunch & Dining Bar · Salzburg
+  Kinematische 3D-Reise: das Logo erscheint, die Kamera fliegt durch das
+  "O" von YAZZOON in eine Welt aus schwebenden, interaktiven Foto-Tafeln
+  der echten Gerichte. Sprache: Deutsch.
+  ────────────────────────────────────────────────────────────────────
+  AUFBAU (siehe main.js):
+    • EIN fixiertes <canvas id="bg"> mit der gesamten 3D-Welt.
+    • HERO: Logo/Titel + leuchtender Portal-Ring (das "O").
+    • Beim Scrollen fliegt die Kamera durch den Ring in einen Korridor
+      aus Foto-Tafeln (echte Wix-Bilder als Texturen).
+    • Foto-Tafeln sind interaktiv (Hover = vergrößern + Bildtitel).
+    • Farbstimmung wechselt mit der Tageszeit (Gold→Grün→Bernstein→Rot).
+  WICHTIG: über HTTP ausführen (node serve.mjs → http://localhost:5188),
+  NICHT per Doppelklick — ES-Module sind über file:// durch CORS blockiert.
+  ════════════════════════════════════════════════════════════════════
+-->
+<html lang="de" dir="ltr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>YAZZOON — Oriental Brunch & Dining Bar · Salzburg</title>
+  <meta name="description" content="YAZZOON — Orientalischer Brunch & levantinische Crossover-Fusionsküche mit Dining Bar in Salzburg. Eine kinematische Reise durch die Welt des Geschmacks." />
+
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,700;0,900;1,700&family=Poiret+One&family=Space+Mono:wght@400;700&family=Cairo:wght@400;700&display=swap" rel="stylesheet" />
+
+  <link rel="stylesheet" href="style.css" />
+
+  <script type="importmap">
+  {
+    "imports": {
+      "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+      "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/",
+      "gsap": "https://cdn.jsdelivr.net/npm/gsap@3.12.5/index.js",
+      "gsap/ScrollTrigger": "https://cdn.jsdelivr.net/npm/gsap@3.12.5/ScrollTrigger.js",
+      "lenis": "https://cdn.jsdelivr.net/npm/lenis@1.1.13/dist/lenis.mjs"
+    }
+  }
+  </script>
+</head>
+<body>
+
+  <!-- ░░░░ HINTERGRUND: animierter Gradient-Mesh + Bokeh + Vignette ░░░░ -->
+  <div id="bg-mesh" aria-hidden="true">
+    <span class="blob blob--wine"></span>
+    <span class="blob blob--gold"></span>
+    <span class="blob blob--wine2"></span>
+  </div>
+  <div id="bg-bokeh" aria-hidden="true"></div>
+
+  <!-- ░░░░ 3D-WELT (transparenter Canvas darüber) ░░░░ -->
+  <canvas id="bg"></canvas>
+  <div class="vignette" aria-hidden="true"></div>
+
+  <!-- ░░░░ LADEBILDSCHIRM (echter Texturen-Fortschritt) ░░░░ -->
+  <div id="loader" class="loader">
+    <div class="loader__inner">
+      <div class="loader__logo">YAZZOON</div>
+      <div class="loader__msg">Wir richten die Gewürze aus …</div>
+      <div class="loader__bar"><span id="loaderFill"></span></div>
+      <div class="loader__pct"><span id="loaderPct">0</span>%</div>
+    </div>
+  </div>
+
+  <!-- ░░░░ COLD OPEN: Glut + aufsteigender Dampf, aus dem das Logo „zündet" ░░░░
+       Eigenständige Schleier-Ebene über dem Hero. Blendet sich aus → das Logo
+       erscheint. Berührt die 3D-/Portal-Logik NICHT. -->
+  <canvas id="coldOpen" aria-hidden="true"></canvas>
+
+  <!-- ░░░░ FESTE UI ░░░░ -->
+  <header class="nav">
+    <a href="#hero" class="nav__logo">YAZZOON</a>
+    <nav class="nav__links">
+      <a href="#journey">Reise</a>
+      <a href="#story">Geschichte</a>
+      <a href="#hours">Öffnungszeiten</a>
+      <a href="#reserve" class="nav__cta">Reservieren</a>
+    </nav>
+  </header>
+
+  <div class="side-indicator">SALZBURG · SEIT 2024</div>
+
+  <ul class="chapters" id="chapters">
+    <li data-chapter="0"><span class="chapters__dot"></span>Dämmerung<em>Brunch</em></li>
+    <li data-chapter="1"><span class="chapters__dot"></span>Mittag<em>Lunch</em></li>
+    <li data-chapter="2"><span class="chapters__dot"></span>Abend<em>Fusion</em></li>
+    <li data-chapter="3"><span class="chapters__dot"></span>Nacht<em>Bar</em></li>
+  </ul>
+
+  <div class="scroll-hint" id="scrollHint">
+    <span>Scrollen &amp; durch das O eintreten</span>
+    <i></i>
+  </div>
+
+  <!-- Riesige Wörter, synchron zur Reise — VORERST DEAKTIVIERT (auf Wunsch
+       entfernt; die schwache Hintergrund-Typografie wirkte störend).
+       Zum Reaktivieren einfach diesen Block wieder einkommentieren —
+       der JS-Code (updateChapters) läuft mit leerer Liste problemlos weiter.
+  <div class="giant-words" id="giantWords" aria-hidden="true">
+    <span data-word="0">Brunch</span>
+    <span data-word="1">Mezze</span>
+    <span data-word="2">Fusion</span>
+    <span data-word="3">Cocktail</span>
+  </div>
+  -->
+  <div class="giant-words" id="giantWords" aria-hidden="true"></div>
+
+  <!-- Bildtitel beim Hover über eine Foto-Tafel -->
+  <div class="photo-caption" id="photoCaption" aria-hidden="true"></div>
+
+  <!-- Klick-Fokus: Detailkarte eines Gerichts (Titel + Beschreibung) -->
+  <div class="dish-focus" id="dishFocus" aria-hidden="true">
+    <div class="dish-focus__card">
+      <span class="dish-focus__eyebrow">// Gericht</span>
+      <h3 class="dish-focus__title" id="dishFocusTitle"></h3>
+      <p class="dish-focus__desc" id="dishFocusDesc"></p>
+      <button class="dish-focus__close" id="dishFocusClose" type="button">Schließen ✕</button>
+    </div>
+  </div>
+
+  <!-- ░░░░ INHALT (Overlay, ≈700vh) ░░░░ -->
+  <main class="scroll-wrap">
+
+    <!-- 0.00 — HERO: Logo + Portal-"O" -->
+    <section id="hero" class="section section--hero">
+      <div class="hero" id="heroInner">
+        <p class="hero__welcome hero__fade"><span class="tw" id="welcomeTw">WILLKOMMEN · <span lang="ar">اهلا وسهلا</span> · <span lang="he">קַבָּלַת פָּנִים</span></span></p>
+        <!-- Das erste "O" ist die Portal-Öffnung: die Kamera fliegt hindurch -->
+        <h1 class="hero__title" id="heroTitle">YAZZ<span class="o" id="portalO">O</span>ON</h1>
+        <div class="hero__panel hero__fade">
+          <p class="hero__sub">Oriental Brunch &amp; Dining Bar</p>
+          <p class="hero__lead">Eine kinematische Reise durch die Welt des Geschmacks — mehr als ein Restaurant.</p>
+        </div>
+        <div class="hero__cta hero__fade">
+          <a href="#reserve" class="btn btn--solid">Tisch reservieren</a>
+          <a href="#journey" class="btn btn--ghost">Die Reise beginnen</a>
+        </div>
+      </div>
+    </section>
+
+    <!-- 0.12–0.55 — DIE REISE durch die Foto-Welt (3D trägt die Bilder) -->
+    <section id="journey" class="section--journey">
+      <div class="cap" data-cap="0">
+        <span class="cap__time">Sa &amp; So · 09:00 – 14:00</span>
+        <h2>Orientalischer Brunch</h2>
+        <p>Bunter Wochenend-Brunch voller Farben und Aromen.</p>
+      </div>
+      <div class="cap" data-cap="1">
+        <span class="cap__time">Mo – Fr · ab 11:30</span>
+        <h2>Mittag &amp; Mezze</h2>
+        <p>Hausgemachte Mezze, Crazy Hummus &amp; täglich frische Vielfalt.</p>
+      </div>
+      <div class="cap" data-cap="2">
+        <span class="cap__time">täglich · ab 16:30</span>
+        <h2>Levantinische Fusion</h2>
+        <p>Kreative Crossover-Küche aus Syrien &amp; Libanon — saftiges Steak, würzige Aromen.</p>
+      </div>
+      <div class="cap" data-cap="3">
+        <span class="cap__time">bis spät</span>
+        <h2>Dining &amp; Bar</h2>
+        <p>Außergewöhnliche Cocktails für lange Salzburger Nächte.</p>
+      </div>
+    </section>
+
+    <!-- 0.60 — ATMOSPHÄRE: Zitat (oben) klar getrennt von Zahlen (unten) -->
+    <section id="atmosphere" class="section section--atmo">
+      <div class="atmo">
+        <div class="atmo__top">
+          <blockquote class="atmo__quote reveal">
+            „Kein bloßes Restaurant — eine Reise zwischen orientalischer Seele
+            und Salzburger Eleganz.“
+          </blockquote>
+        </div>
+        <div class="atmo__bottom">
+          <div class="stats" id="stats">
+            <div class="stat reveal"><b data-count="30" data-suffix="+">0</b><span>Gerichte</span></div>
+            <div class="stat reveal"><b data-count="100" data-suffix="%">0</b><span>täglich frisch</span></div>
+            <div class="stat reveal"><b data-count="3">0</b><span>Erlebnisse an einem Tag</span></div>
+            <div class="stat reveal"><b data-count="2024" data-plain="1">0</b><span>gegründet</span></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 0.75 — GESCHICHTE -->
+    <section id="story" class="section section--story">
+      <div class="wrap story">
+        <div class="story__text">
+          <p class="eyebrow reveal">// Unsere Geschichte</p>
+          <h2 class="h2 reveal">Aus einer Idee wurde ein Ort</h2>
+          <p class="reveal">YAZZOON — oriental brunch &amp; dining bar — startete Anfang 2024 in Salzburg.
+            Begonnen als „Barsharing“-Konzept in Zusammenarbeit mit Sonja Weinhandl von Genussprojekt,
+            wurde die Fläche an bestimmten Tagen unterschiedlich genutzt. Seit März 2024 ist YAZZOON ein
+            Vollzeit-Restaurant — die ganze Woche.</p>
+          <p class="reveal">Wir legen großen Wert auf Qualität und regionale Herkunft, und alle Gerichte
+            werden frisch zubereitet. Das Fleisch stammt von der Fleischhauerei Kriechbaum (Lochen am See),
+            der Fisch von der Biofischzucht Fam. Krieg.</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- 0.88 — ÖFFNUNGSZEITEN + KONTAKT -->
+    <section id="hours" class="section section--hours">
+      <div class="wrap hours-contact">
+        <div class="hours-box reveal">
+          <p class="eyebrow">// Öffnungszeiten</p>
+          <ul class="hours-list">
+            <li><span>Montag</span><b>16:30 – 22:00</b></li>
+            <li class="closed"><span>Dienstag</span><b>Ruhetag</b></li>
+            <li><span>Mittwoch &amp; Donnerstag</span><b>16:30 – 22:00</b></li>
+            <li><span>Freitag</span><b>16:30 – 23:00</b></li>
+            <li><span>Samstag &amp; Sonntag</span><b>09:00 – 14:00 &amp; 16:30 – 22:00</b></li>
+          </ul>
+        </div>
+        <div class="contact-box reveal">
+          <p class="eyebrow">// Kontakt</p>
+          <p class="contact-line"><span>Adresse</span><a href="https://maps.google.com/?q=YAZZOON%20oriental%20brunch%20%26%20dining%20bar%20Salzburg" target="_blank" rel="noopener">Ursulinenplatz 4, 5020 Salzburg, Österreich</a></p>
+          <p class="contact-line"><span>Telefon</span><a href="tel:+436645439534">+43 664 543 9 534</a></p>
+          <p class="contact-line"><span>E-Mail</span><a href="mailto:office@yazzoon.com">office@yazzoon.com</a></p>
+          <p class="contact-line"><span>Instagram</span><a href="https://instagram.com/yazzoon_salzburg" target="_blank" rel="noopener">@yazzoon_salzburg</a></p>
+        </div>
+      </div>
+    </section>
+
+    <!-- 1.00 — RESERVIEREN + FOOTER -->
+    <section id="reserve" class="section section--reserve">
+      <div class="wrap reserve">
+        <p class="eyebrow reveal">// Bereit für die Reise?</p>
+        <h2 class="h2 reserve__title reveal">Reserviere dein Erlebnis</h2>
+        <p class="reserve__lead reveal">Ein Tisch bei YAZZOON ist mehr als ein Platz — es ist der Beginn einer Reise durch den Orient.</p>
+        <div class="reserve__cta reveal">
+          <a href="tel:+436645439534" class="btn btn--solid btn--lg">Jetzt anrufen</a>
+          <a href="mailto:office@yazzoon.com" class="btn btn--ghost btn--lg">Per E-Mail reservieren</a>
+        </div>
+      </div>
+      <footer class="footer">
+        <div class="footer__logo">YAZZOON</div>
+        <p class="footer__tag">Oriental Brunch &amp; Dining Bar · Salzburg</p>
+        <div class="footer__social">
+          <a href="https://instagram.com/yazzoon_salzburg" target="_blank" rel="noopener">Instagram</a>
+          <a href="mailto:office@yazzoon.com">E-Mail</a>
+          <a href="tel:+436645439534">Telefon</a>
+        </div>
+        <p class="footer__copy">© 2024–2026 YAZZOON · Ursulinenplatz 4, 5020 Salzburg</p>
+      </footer>
+    </section>
+
+  </main>
+
+  <script type="module" src="main.js"></script>
+</body>
+</html>
