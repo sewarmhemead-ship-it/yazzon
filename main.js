@@ -36,6 +36,15 @@ const IS_MOBILE = matchMedia('(max-width: 768px)').matches;
 const PARTICLE_COUNT = IS_MOBILE ? 1200 : 3500;
 const EASE = 0.07;
 
+/* ── PERFORMANCE-Tuning ─────────────────────────────────────────────────
+   Die Foto-Tafeln sind nie größer als ~halber Bildschirm → volle
+   Wix-Originale (bis ~3 MB) sind reine Verschwendung. Wir lassen Wix die
+   Bilder serverseitig verkleinern + per enc_auto als WebP/AVIF ausliefern
+   (≈10–30× kleiner). MAX_DPR deckelt die Render-Auflösung.            */
+const MAX_DPR = Math.min(window.devicePixelRatio || 1, IS_MOBILE ? 1.5 : 2);
+const TEX_W   = IS_MOBILE ? 640 : 900;   // Zielbreite der Foto-Texturen (px)
+const TEX_Q   = 80;                       // Bildqualität (1–100)
+
 // Kinematische Zusatz-Ebenen — einfache Schalter zum Ausprobieren/Entfernen.
 // Reine Deko im 3D-Raum: berühren NICHT die Scroll-/Kamera-/Foto-Logik.
 const FX = {
@@ -71,8 +80,10 @@ const IMAGES = [
   { u:'68f568_f67dc7dd02544e68ace5f937e027a2f6', t:'Signature Cocktail',    f:'photo-1551024601-bec78aea704b', d:'Unsere Bar bei Nacht: außergewöhnliche Drinks für lange Salzburger Stunden.' },
   { u:'68f568_fcc180e6819b407c9f01e48d7e18859c', t:'Die große Tafel',       f:'photo-1517248135467-4c7edcad34c4', d:'Wenn alles zusammenkommt — die große YAZZOON-Tafel, der Höhepunkt der Reise.' },
 ];
-const wixURL = id => `https://static.wixstatic.com/media/${id}~mv2.jpg`;
-const unsplashURL = id => `https://images.unsplash.com/${id}?w=900&q=80`;
+// fit = Seitenverhältnis bleibt erhalten (buildGallery liest die echten
+// Bildmaße); enc_auto = Wix liefert je nach Browser WebP/AVIF.
+const wixURL = id => `https://static.wixstatic.com/media/${id}~mv2.jpg/v1/fit/w_${TEX_W},h_${TEX_W},q_${TEX_Q},enc_auto/file.jpg`;
+const unsplashURL = id => `https://images.unsplash.com/${id}?w=${TEX_W}&q=${TEX_Q}&auto=format`;
 
 // Kamerapfad: vom Hero (z+) durch den Ring (z≈6) in den Foto-Korridor (z−)
 const CAMERA_PATH = new THREE.CatmullRomCurve3([
@@ -107,7 +118,7 @@ if (!REDUCED) document.body.classList.add('is-intro');
 // alpha:true → der Canvas ist transparent, der animierte CSS-Gradient-Mesh
 // (Anthrazit + Weinrot + gedämpftes Gold) scheint hindurch.
 const renderer = new THREE.WebGLRenderer({ canvas, antialias: !IS_MOBILE, alpha: true });
-renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+renderer.setPixelRatio(MAX_DPR);
 renderer.setSize(window.innerWidth, window.innerHeight);
 renderer.setClearColor(0x000000, 0);
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
@@ -117,7 +128,9 @@ const scene = new THREE.Scene();
 scene.background = null;
 scene.fog = new THREE.FogExp2(STAGES[0].fog, 0.024);
 
-const camera = new THREE.PerspectiveCamera(58, innerWidth/innerHeight, 0.1, 120);
+// Mobil (Hochformat) ist das horizontale Sichtfeld sehr schmal → weiteres
+// FOV, damit die seitlichen Foto-Tafeln im Bild bleiben statt am Rand zu kleben.
+const camera = new THREE.PerspectiveCamera(IS_MOBILE ? 68 : 58, innerWidth/innerHeight, 0.1, 120);
 camera.position.copy(CAMERA_PATH.getPointAt(0));
 
 const ambient = new THREE.AmbientLight(0xffffff, 0.6);
@@ -348,7 +361,7 @@ function buildGallery(textures){
     const img = tex.image;
     let aspect = (img && img.width && img.height) ? img.width/img.height : 1.4;
     aspect = THREE.MathUtils.clamp(aspect, 0.7, 1.7);   // keine extrem breiten Tafeln
-    const h = 2.7, w = h*aspect;
+    const h = IS_MOBILE ? 1.95 : 2.7, w = h*aspect;     // mobil kleinere Tafeln (Hochformat)
 
     const mat = makePhotoMaterial(tex);
     const mesh = new THREE.Mesh(new THREE.PlaneGeometry(w, h), mat);
@@ -376,11 +389,11 @@ function buildGallery(textures){
     // ~3 Tafeln gleichzeitig sichtbar, alle innerhalb des Sichtfelds.
     const side = i % 2 ? 1 : -1;
     mesh.position.set(
-      side * (2.6 + (i % 2) * 0.5),
-      Math.sin(i * 1.7) * 1.4,
-      -3 - i * 5.0
+      side * (IS_MOBILE ? 1.9 + (i % 2) * 0.25 : 2.6 + (i % 2) * 0.5),
+      Math.sin(i * 1.7) * (IS_MOBILE ? 0.9 : 1.4),
+      -3 - i * (IS_MOBILE ? 4.4 : 5.0)
     );
-    mesh.rotation.y = -side * 0.07;   // sanfte Neigung ≈ ±4°
+    mesh.rotation.y = -side * (IS_MOBILE ? 0.05 : 0.07);   // sanfte Neigung
     mesh.userData = {
       title: IMAGES[i] ? IMAGES[i].t : '',
       desc:  IMAGES[i] ? IMAGES[i].d : '',
@@ -427,7 +440,11 @@ const GAL_SPACING      = 4.4;    // seitlicher Abstand (für Querformat-Bilder)
 const GAL_SCALE        = 1.0;    // Größe der Bilder in der Reihe
 const GAL_SCALE_ACTIVE = 1.1;    // aktives Bild (Hover) etwas größer
 const GAL_DIST_ACTIVE  = 8.9;    // aktives Bild etwas näher (tritt hervor)
-const _camR=new THREE.Vector3(), _camF=new THREE.Vector3(), _gt=new THREE.Vector3();
+// Mobil (Hochformat): Bilder stapeln sich VERTIKAL statt nebeneinander.
+const GAL_DIST_M       = 8.8;    // Abstand vor der Kamera (mobil)
+const GAL_SPACING_M    = 2.5;    // vertikaler Abstand (mobil)
+const GAL_LIFT_M       = 1.7;    // Stapel anheben → Platz für die Karte unten
+const _camR=new THREE.Vector3(), _camF=new THREE.Vector3(), _camU=new THREE.Vector3(), _gt=new THREE.Vector3();
 const _ONE = new THREE.Vector3(1,1,1);
 
 let gallery = null;          // { active:mesh|null, from:mesh } während geöffnet
@@ -512,7 +529,7 @@ function openGallery(clicked){
     m.material.opacity = 1; m.userData.idx = 0;   // jede Schiebe startet bei ihrem ersten Bild
     if (m.userData.textures[0]) applySlotTexture(m, m.userData.textures[0]);
     m.visible = true;
-    m.position.copy(camera.position).addScaledVector(_camF, GAL_DIST);
+    m.position.copy(camera.position).addScaledVector(_camF, IS_MOBILE ? GAL_DIST_M : GAL_DIST);
     m.quaternion.copy(camera.quaternion);
     m.scale.setScalar(0.01);
   }
@@ -539,7 +556,7 @@ function closeGallery(){
 // Klick: Tafel treffen → Galerie öffnen; in der Galerie daneben → schließen
 if (!IS_MOBILE){
   window.addEventListener('click', (e)=>{
-    if (focusEl && focusEl.contains(e.target)) return;   // Klicks auf der Karte ignorieren
+    if (focusEl && e.target instanceof Node && focusEl.contains(e.target)) return;   // Klicks auf der Karte ignorieren
     raycaster.setFromCamera(pointer, camera);
     if (gallery){
       const hit = raycaster.intersectObjects(gallerySlots, false)[0];
@@ -549,6 +566,30 @@ if (!IS_MOBILE){
       if (hit) openGallery(hit.object);
     }
   });
+}
+// MOBIL: Tippen statt Hover/Klick. Tippen auf eine Tafel öffnet die Galerie;
+// in der Galerie hebt Tippen ein Bild hervor, Tippen daneben schließt.
+// Tap-vs-Scroll-Erkennung: nur kurze, ortsfeste Berührungen zählen als Tap.
+if (IS_MOBILE){
+  let tsx=0, tsy=0, tst=0;
+  window.addEventListener('touchstart', (e)=>{
+    const t=e.changedTouches[0]; tsx=t.clientX; tsy=t.clientY; tst=performance.now();
+  }, {passive:true});
+  window.addEventListener('touchend', (e)=>{
+    if (focusEl && e.target instanceof Node && focusEl.contains(e.target)) return;  // Tipp auf die Karte ignorieren
+    const t=e.changedTouches[0]; if (!t) return;
+    if (Math.hypot(t.clientX-tsx, t.clientY-tsy) > 16) return; // war ein Scroll/Wisch
+    if (performance.now()-tst > 500) return;                  // war ein Long-Press
+    pointer.x=(t.clientX/innerWidth)*2-1; pointer.y=-(t.clientY/innerHeight)*2+1;
+    raycaster.setFromCamera(pointer, camera);
+    if (gallery){
+      const hit = raycaster.intersectObjects(gallerySlots, false)[0];
+      if (hit) setActive(hit.object); else closeGallery();
+    } else {
+      const hit = raycaster.intersectObjects(photoPlanes, false)[0];
+      if (hit) openGallery(hit.object);
+    }
+  }, {passive:true});
 }
 if (focusClose) focusClose.addEventListener('click', closeGallery);
 addEventListener('keydown', (e)=>{ if (e.key === 'Escape' && gallery) closeGallery(); });
@@ -587,14 +628,18 @@ function updateHover(){
 function updateGallery(){
   if (!gallery) return;
   _camF.set(0,0,-1).applyQuaternion(camera.quaternion);     // Kamera-Achsen (frisch nach lookAt)
-  _camR.set(1,0,0).applyQuaternion(camera.quaternion);
+  if (IS_MOBILE) _camU.set(0,1,0).applyQuaternion(camera.quaternion);
+  else           _camR.set(1,0,0).applyQuaternion(camera.quaternion);
   const n = gallerySlots.length;
+  const dist  = IS_MOBILE ? GAL_DIST_M    : GAL_DIST;
+  const distA = IS_MOBILE ? GAL_DIST_M-0.4: GAL_DIST_ACTIVE;
+  const space = IS_MOBILE ? GAL_SPACING_M : GAL_SPACING;
   for (let i=0;i<n;i++){
     const m = gallerySlots[i], on = (m === gallery.active);
-    const xOff = (i - (n-1)/2) * GAL_SPACING;
-    _gt.copy(camera.position)
-       .addScaledVector(_camF, on ? GAL_DIST_ACTIVE : GAL_DIST)
-       .addScaledVector(_camR, xOff);
+    const off = (i - (n-1)/2) * space;
+    _gt.copy(camera.position).addScaledVector(_camF, on ? distA : dist);
+    if (IS_MOBILE) _gt.addScaledVector(_camU, GAL_LIFT_M - off);   // i=0 oben; Stapel angehoben
+    else           _gt.addScaledVector(_camR, off);
     m.position.lerp(_gt, 0.18);
     m.quaternion.slerp(camera.quaternion, 0.18);             // bildschirm-parallel
     m.scale.lerp(_ONE.clone().setScalar(on ? GAL_SCALE_ACTIVE : GAL_SCALE), 0.18);
@@ -604,11 +649,14 @@ function updateGallery(){
 /* ════════════════════════════════════════════════════════════════════
    POST-PROCESSING (Bloom für Ring/Partikel) — auf Mobile aus
    ════════════════════════════════════════════════════════════════════ */
-let composer = null;
+let composer = null, bloomPass = null;
 if (!IS_MOBILE){
   composer = new EffectComposer(renderer);
   composer.addPass(new RenderPass(scene, camera));
-  composer.addPass(new UnrealBloomPass(new THREE.Vector2(innerWidth,innerHeight), 0.5, 0.7, 0.82));
+  // Bloom in halber Auflösung berechnen → deutlich weniger Füllrate, optisch
+  // praktisch identisch (Bloom ist ohnehin weichgezeichnet).
+  bloomPass = new UnrealBloomPass(new THREE.Vector2(innerWidth*0.5, innerHeight*0.5), 0.5, 0.7, 0.82);
+  composer.addPass(bloomPass);
 }
 
 /* ════════════════════════════════════════════════════════════════════
@@ -765,6 +813,9 @@ function tick(){
 
   CAMERA_PATH.getPointAt(p, camera.position);
   CAMERA_PATH.getPointAt(Math.min(p+0.04,1), look);
+  // Mobil: seitliches Pendeln dämpfen → Kamera fliegt mittiger/gerader durch
+  // den Korridor (keine Parallaxe, Tafeln sind näher an der Mitte).
+  if (IS_MOBILE){ camera.position.x *= 0.4; look.x *= 0.4; }
   mouse.x+=(mouse.tx-mouse.x)*0.05; mouse.y+=(mouse.ty-mouse.y)*0.05;
   camera.position.x+=mouse.x*1.1; camera.position.y+=-mouse.y*0.8;
 
@@ -814,7 +865,10 @@ function tick(){
 addEventListener('resize',()=>{
   camera.aspect=innerWidth/innerHeight; camera.updateProjectionMatrix();
   renderer.setSize(innerWidth,innerHeight);
-  if(composer) composer.setSize(innerWidth,innerHeight);
+  if(composer){
+    composer.setSize(innerWidth,innerHeight);
+    if(bloomPass) bloomPass.setSize(innerWidth*0.5, innerHeight*0.5);   // Bloom halbauflösend halten
+  }
   ScrollTrigger.refresh();
 });
 document.addEventListener('visibilitychange',()=>{

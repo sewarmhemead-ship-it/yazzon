@@ -317,6 +317,20 @@ p{ text-shadow:0 1px 16px rgba(0,0,0,.5); }
   .hero__cta{ flex-direction:column; align-items:center; }
   .atmo{ gap:80px; }
   .cap{ padding-bottom:14vh; }
+
+  /* Hero-Lesbarkeit: kräftigerer Backdrop hinter Untertitel/Lead, da die
+     Foto-Tafeln im schmalen Hochformat näher hinter dem Text liegen. */
+  .hero__panel{ padding:16px 22px; margin-top:1.2rem;
+    background:radial-gradient(ellipse at center, rgba(8,8,11,.9), rgba(8,8,11,.5) 82%);
+    -webkit-backdrop-filter:blur(8px); backdrop-filter:blur(8px); }
+  .hero__lead{ font-size:.98rem; }
+  .hero__welcome{ padding:.3rem .7rem; border-radius:8px; background:rgba(8,8,11,.5); }
+
+  /* Galerie-Karte kompakter, damit sie den vertikalen Bilderstapel nicht verdeckt */
+  .dish-focus{ padding:0 18px clamp(1.2rem,4vh,2.2rem); }
+  .dish-focus__card{ padding:1.1rem 1.2rem 1rem; background:rgba(8,8,11,.55); }
+  .dish-focus__desc{ font-size:.92rem; line-height:1.5; }
+  .dish-focus__close{ margin-top:.9rem; }
 }
 
 /* ░░░░ REDUCED MOTION ░░░░ */
